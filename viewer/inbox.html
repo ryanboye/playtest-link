@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLAYTEST INBOX — under the hood</title>
+<style>
+  :root { --amber: #ffb03a; --dim: #7a5a28; --bg: #0b0a08; --card: #14110c; --green: #9dff5a; --red: #ff5a3a; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--amber); font-family: 'Courier New', monospace; padding: 18px; }
+  h1 { font-size: 20px; letter-spacing: 4px; }
+  .sub { color: var(--dim); font-size: 11px; margin: 4px 0 14px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tabs button { background: var(--card); color: var(--dim); border: 1px solid #33291a; padding: 7px 14px;
+    font-family: inherit; font-size: 11px; letter-spacing: 2px; cursor: pointer; }
+  .tabs button.on { color: var(--amber); border-color: var(--amber); }
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .row { background: var(--card); border: 1px solid #2a2114; padding: 12px; cursor: pointer; }
+  .row:hover { border-color: var(--dim); }
+  .row .head { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--dim); }
+  .row .head b { color: var(--amber); }
+  .row .complaint { margin-top: 6px; font-size: 13px; }
+  #detail { display: none; }
+  .back { color: var(--green); font-size: 11px; letter-spacing: 2px; cursor: pointer; margin-bottom: 12px; display: inline-block; }
+  .panel { background: var(--card); border: 1px solid #2a2114; padding: 12px; margin-bottom: 12px; }
+  .panel h3 { font-size: 12px; letter-spacing: 2px; color: var(--dim); margin-bottom: 8px; }
+  video { width: 100%; max-width: 420px; display: block; background: #000; margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid #221b10; }
+  th { color: var(--dim); font-size: 10px; letter-spacing: 1px; }
+  .t { color: var(--green); white-space: nowrap; }
+  canvas.spark { width: 100%; height: 70px; background: #0e0c08; border: 1px solid #221b10; }
+  details { font-size: 11px; }
+  details pre { max-height: 300px; overflow: auto; background: #0e0c08; padding: 8px; color: #b8a06a; font-size: 10px; }
+  .zonebar { display: flex; height: 18px; margin-top: 6px; font-size: 9px; overflow: hidden; }
+  .zonebar div { display: grid; place-items: center; white-space: nowrap; overflow: hidden; border-right: 1px solid #0b0a08; }
+</style>
+</head>
+<body>
+<h1>PLAYTEST INBOX</h1>
+<div class="sub">every invoke: the clip, the trace, the marks · plus all asset feedback — <a href="index.html" style="color:#9dff5a">back to asset library</a></div>
+<div class="tabs">
+  <button id="tab-inv" class="on">INVOKES</button>
+  <button id="tab-fb">ASSET FEEDBACK</button>
+</div>
+<div id="list" class="list"></div>
+<div id="detail"></div>
+<script>
+const API = 'api';
+const $ = (id) => document.getElementById(id);
+let tab = 'inv';
+
+const fmtT = (ms) => (ms / 1000).toFixed(1) + 's';
+const zoneColors = {};
+let zc = 0;
+const zColor = (z) => zoneColors[z] || (zoneColors[z] = `hsl(${(zc++ * 61) % 360} 45% 24%)`);
+
+async function showList() {
+  $('detail').style.display = 'none';
+  $('list').style.display = 'flex';
+  $('list').innerHTML = '<div class="sub">loading…</div>';
+  if (tab === 'inv') {
+    const rows = await (await fetch(API + '/invokes')).json();
+    $('list').innerHTML = rows.length ? '' : '<div class="sub">no invokes yet — press T in-game</div>';
+    for (const r of rows) {
+      const d = document.createElement('div');
+      d.className = 'row';
+      d.innerHTML = `<div class="head"><b>${r.game}</b><span>${r.stamp.replace(/T/, ' ').slice(0, 19)}</span>` +
+        `<span>zone <b>${r.zone}</b></span><span>${r.marks} marks</span><span>${r.events} events</span><span>${r.clips.length} clips</span></div>` +
+        `<div class="complaint">“${r.complaint}”</div>`;
+      d.onclick = () => showDetail(r);
+      $('list').appendChild(d);
+    }
+  } else {
+    const rows = await (await fetch(API + '/feedbacklog')).json();
+    $('list').innerHTML = rows.length ? '' : '<div class="sub">no asset feedback yet</div>';
+    const t = document.createElement('table');
+    t.innerHTML = '<tr><th>when</th><th>asset</th><th>feedback</th></tr>' + rows.map((r) =>
+      `<tr><td class="t">${(r.t || '').slice(0, 19).replace('T', ' ')}</td><td><b>${r.asset}</b></td><td>${r.text}</td></tr>`).join('');
+    const wrap = document.createElement('div');
+    wrap.className = 'panel';
+    wrap.appendChild(t);
+    $('list').appendChild(wrap);
+  }
+}
+
+async function showDetail(r) {
+  $('list').style.display = 'none';
+  const det = $('detail');
+  det.style.display = 'block';
+  det.innerHTML = '<span class="back">← back to inbox</span><div class="sub">loading bundle…</div>';
+  det.querySelector('.back').onclick = showList;
+  const meta = await (await fetch(`${API}/files/${r.game}/${r.stamp}/meta.json`)).json();
+
+  let html = `<span class="back">← back to inbox</span>`;
+  html += `<div class="panel"><h3>INVOKE · ${r.game} · ${r.stamp.replace('T', ' ').slice(0, 19)}</h3>
+    <div style="font-size:14px;margin-bottom:6px">“${meta.complaint}”</div>
+    <div class="head" style="font-size:11px;color:var(--dim)">
+      zone <b style="color:var(--amber)">${meta.snapshot?.zone || meta.snapshot?.room || '?'}</b>
+      ${meta.aim ? ` · aim <b style="color:var(--amber)">${meta.aim}</b>` : ''}
+      · snapshot: <span style="color:#b8a06a">${JSON.stringify(meta.snapshot || {}).slice(0, 180)}</span>
+    </div></div>`;
+  html += `<div class="panel"><h3>CLIPS (what the player saw)</h3>${r.clips.map((c) =>
+    `<video src="${API}/files/${r.game}/${r.stamp}/${c}" controls loop muted></video>`).join('')}</div>`;
+  html += `<div class="panel"><h3>HP TRACE + ZONES (the 30s before the invoke)</h3>
+    <canvas class="spark" id="spark" width="800" height="70"></canvas><div class="zonebar" id="zonebar"></div></div>`;
+  if (meta.marks?.length) {
+    html += `<div class="panel"><h3>MARKS (◈ moments the player flagged)</h3><table><tr><th>t</th><th>state</th><th>aim</th></tr>` +
+      meta.marks.map((m) => `<tr><td class="t">${fmtT(m.t)}</td><td>${JSON.stringify(m.state || {}).slice(0, 140)}</td><td>${m.aim || ''}</td></tr>`).join('') + '</table></div>';
+  }
+  if (meta.events?.length) {
+    html += `<div class="panel"><h3>EVENT LOG</h3><table><tr><th>t</th><th>event</th><th>data</th></tr>` +
+      meta.events.map((e) => `<tr><td class="t">${fmtT(e.t)}</td><td><b>${e.name}</b></td><td>${JSON.stringify(e.data || {})}</td></tr>`).join('') + '</table></div>';
+  }
+  html += `<div class="panel"><h3>UNDER THE HOOD</h3><details><summary>raw state timeline (${(meta.states || []).length} samples @4Hz)</summary>
+    <pre>${JSON.stringify(meta.states || [], null, 1)}</pre></details>
+    <details><summary>full meta.json</summary><pre>${JSON.stringify(meta, null, 1)}</pre></details></div>`;
+  det.innerHTML = html;
+  det.querySelector('.back').onclick = showList;
+
+  // hp sparkline + zone strip from the state timeline
+  const st = meta.states || [];
+  if (st.length > 1) {
+    const cv = $('spark'), x = cv.getContext('2d');
+    const t0 = st[0].t, t1 = st[st.length - 1].t, span = Math.max(1, t1 - t0);
+    const X = (t) => ((t - t0) / span) * 790 + 5;
+    x.strokeStyle = '#3a2f1c'; x.strokeRect(0.5, 0.5, 799, 69);
+    x.beginPath();
+    x.strokeStyle = '#ff5a3a'; x.lineWidth = 2;
+    st.forEach((s, i) => {
+      const hp = s.hp ?? 0;
+      const y = 62 - (hp / 100) * 55;
+      i ? x.lineTo(X(s.t), y) : x.moveTo(X(s.t), y);
+    });
+    x.stroke();
+    x.fillStyle = '#7a5a28'; x.font = '9px monospace';
+    x.fillText('hp 100', 4, 12); x.fillText('hp 0', 4, 66);
+    // marks as diamonds
+    (meta.marks || []).forEach((m) => {
+      x.fillStyle = '#9dff5a';
+      const mx = X(m.t);
+      x.beginPath(); x.moveTo(mx, 4); x.lineTo(mx + 4, 10); x.lineTo(mx, 16); x.lineTo(mx - 4, 10); x.fill();
+    });
+    const zb = $('zonebar');
+    let cur = null, start = t0;
+    const flush = (z, a, b) => {
+      const d = document.createElement('div');
+      d.style.width = (((b - a) / span) * 100) + '%';
+      d.style.background = zColor(z);
+      d.textContent = z; d.title = z;
+      zb.appendChild(d);
+    };
+    for (const s of st) {
+      const z = s.zone || s.room || '?';
+      if (cur === null) { cur = z; start = s.t; }
+      else if (z !== cur) { flush(cur, start, s.t); cur = z; start = s.t; }
+    }
+    if (cur !== null) flush(cur, start, t1);
+  }
+}
+
+$('tab-inv').onclick = () => { tab = 'inv'; $('tab-inv').classList.add('on'); $('tab-fb').classList.remove('on'); showList(); };
+$('tab-fb').onclick = () => { tab = 'fb'; $('tab-fb').classList.add('on'); $('tab-inv').classList.remove('on'); showList(); };
+showList();
+</script>
+</body>
+</html>
