@@ -21,6 +21,7 @@ window.PlaytestLink = (() => {
   const states = [];   // {t, ...state} @4Hz, 30s window
   const events = [];   // {t, name, data}, last 80
   const marks = [];    // {t, state, aim}
+  const errors = [];   // {t, type, msg, stack} — automatic, zero game cooperation
   let recA = null, recB = null, chunksA = [], chunksB = [], liveIsA = true;
   let stream = null, ui = {}, busy = false;
 
@@ -37,6 +38,55 @@ window.PlaytestLink = (() => {
     const old = liveIsA ? recB : recA;
     if (liveIsA) recA = startRec(true); else recB = startRec(false);
     setTimeout(() => { try { old && old.state !== 'inactive' && old.stop(); } catch {} }, 5500);
+  }
+
+  function pushError(entry) {
+    errors.push(entry);
+    if (errors.length > 20) errors.shift();
+    if (cfg && cfg.autoReportCrashes && entry.type !== 'console.error' && !busy) {
+      // one automatic bundle per session on the first real crash
+      cfg.autoReportCrashes = false;
+      setTimeout(() => { ui.input.value = '(automatic crash report)'; send(); }, 400);
+    }
+  }
+  function hookErrors() {
+    addEventListener('error', (e) => pushError({
+      t: now(), type: 'error', msg: String(e.message || '').slice(0, 300),
+      src: `${e.filename || ''}:${e.lineno || 0}`,
+      stack: e.error && e.error.stack ? String(e.error.stack).slice(0, 1500) : null,
+    }));
+    addEventListener('unhandledrejection', (e) => pushError({
+      t: now(), type: 'unhandledrejection',
+      msg: String((e.reason && e.reason.message) || e.reason || '').slice(0, 300),
+      stack: e.reason && e.reason.stack ? String(e.reason.stack).slice(0, 1500) : null,
+    }));
+    const orig = console.error.bind(console);
+    console.error = (...args) => {
+      pushError({ t: now(), type: 'console.error',
+        msg: args.map((a) => String((a && a.stack) || a)).join(' ').slice(0, 500) });
+      orig(...args);
+    };
+  }
+
+  // Standardized __game adapter: if the game exposes window.__game (the hook
+  // contract in AGENT-INSTRUCTIONS.md) and no getState was supplied, derive
+  // one automatically from its scalar/array getters.
+  function adaptGameHook() {
+    const KEYS = ['phase', 'hp', 'ammo', 'zone', 'room', 'x', 'y', 'pos', 'yaw', 'frags', 'level', 'score'];
+    return () => {
+      const g = window.__game;
+      if (!g) return null;
+      const s = {};
+      for (const k of KEYS) {
+        try {
+          const v = g[k];
+          if (v === undefined || v === null) continue;
+          if (typeof v === 'function' || (typeof v === 'object' && !Array.isArray(v))) continue;
+          s[k] = Array.isArray(v) && v.length > 8 ? v.length : v;
+        } catch {}
+      }
+      return Object.keys(s).length ? s : null;
+    };
   }
 
   function toast(msg, ms = 1800, action) {
@@ -85,7 +135,7 @@ window.PlaytestLink = (() => {
         game: cfg.game, t: now(), url: location.href, ua: navigator.userAgent.slice(0, 80),
         complaint: ui.input.value.trim() || '(no text — see marks/clip)',
         aim: safeAim(), snapshot: safeState(),
-        marks, events: events.slice(-80), states: states.slice(-120),
+        marks, events: events.slice(-80), states: states.slice(-120), errors: errors.slice(-20),
       };
       const clips = await Promise.all(blobs.map((b) => new Promise((res) => {
         const fr = new FileReader();
@@ -163,6 +213,8 @@ window.PlaytestLink = (() => {
     init(c) {
       cfg = c;
       cfg.keys = c.keys || { mark: 'KeyM', invoke: 'KeyT' };
+      if (!cfg.getState) cfg.getState = adaptGameHook(); // standardized __game shape
+      hookErrors();
       stream = cfg.canvas.captureStream(cfg.fps || 15);
       recA = startRec(true);
       liveIsA = true;
@@ -177,6 +229,22 @@ window.PlaytestLink = (() => {
         if (ui.box.style.display === 'flex') return;
         if (e.code === cfg.keys.mark) mark();
         if (e.code === cfg.keys.invoke) { e.preventDefault(); openBox(); }
+      });
+    },
+    // one-line setup for generated projects: PlaytestLink.auto({ endpoint, game })
+    // — largest canvas, __game adapter, defaults for everything else.
+    auto(overrides = {}) {
+      const canvases = [...document.querySelectorAll('canvas')];
+      const canvas = canvases.sort((a, b) => b.width * b.height - a.width * a.height)[0];
+      if (!canvas) return setTimeout(() => this.auto(overrides), 800);
+      const big = canvas.width * canvas.height > 600000;
+      this.init({
+        canvas,
+        endpoint: overrides.endpoint || 'playtest-api',
+        game: overrides.game || (document.title || 'game').toLowerCase().replace(/\W+/g, '-').slice(0, 24),
+        fps: big ? 8 : 15, bitrate: big ? 550000 : 900000, clipSec: 6,
+        autoReportCrashes: true,
+        ...overrides,
       });
     },
     event(name, data) {

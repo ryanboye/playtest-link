@@ -62,14 +62,31 @@ PlaytestLink.event('door_open', { x, y });     // push gameplay facts as they ha
 See **AGENT-INSTRUCTIONS.md** for the doc to hand to game-building agents, and
 **LEARNINGS.md** for the field notes (gotchas, tuning, workflow).
 
-## MGS / harness readiness
+## For project-generating systems (MGS-like harnesses) — the DIY kit
 
-Usable nearly as-is:
+This repo is designed to be dropped into ANY system that generates games/projects:
 
-- The client is fully generic (all game-specific behavior enters via `init` config).
-- The relay is env-configured and dependency-free. For a multi-project harness run one
-  relay and use `game:` tags per project — the inbox and viewer already group by tag.
-- Discord delivery is optional; the disk inbox (`meta.json` + webm per invoke) is the
-  stable integration surface for an agent to poll.
-- What you'd add for MGS-scale polish: auth on the invoke endpoint (it's open by design
-  for playtesters), retention/pruning for the inbox, and per-project viewer URLs.
+1. **Run one relay** (env-configured, zero deps). All projects share it — bundles group
+   by the `game:` tag, and the viewer separates streams automatically.
+2. **Inject `AGENT-INSTRUCTIONS.md` into your build briefs.** It's written as outcome
+   bars for a generating agent: the `__game` hook contract, the integration call, the
+   level-authoring doctrine. Generated games that follow it get full support.
+3. **Generated projects integrate with ONE line** if they follow the hook contract:
+   ```html
+   <script src="playtest-link.js"></script>
+   <script>PlaytestLink.auto({ endpoint: '/playtest-api', game: 'project-42' });</script>
+   ```
+   `auto()` finds the canvas, adapts a standard `window.__game` hook into the state
+   timeline, sizes the recorder to the canvas, and enables automatic crash reporting.
+4. **What's automatic for every game** (zero cooperation): video ring buffer, marks +
+   report UI, version-poll reload toast, and **JS error/stack capture**
+   (`window.onerror` + `unhandledrejection` + a `console.error` ring) — crashes arrive
+   as bundles with the stack trace stapled to the last seconds of video and state.
+   Opt-in `autoReportCrashes: true` sends a bundle on the first crash without any
+   player action.
+5. **What needs the game's cooperation** (the contract, ~10 lines): a richer `getState`
+   than the adapter can guess, `PlaytestLink.event(...)` calls at gameplay moments, and
+   `getAim`. Only the game knows its own semantics — that's why this part is a contract
+   and not reflection.
+6. Hardening knobs for scale: put auth in front of `/invoke` (it's open by design for
+   playtesters), prune the inbox on retention, per-project viewer URLs.

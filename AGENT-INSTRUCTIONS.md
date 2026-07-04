@@ -4,6 +4,11 @@ Hand this file to any agent building or maintaining a browser game that should s
 player-invoked debugging. These are OUTCOME requirements — how you implement them is your
 call, but every bar must hold.
 
+> **For project-generating systems**: inject this file into every build brief. The
+> minimum compliant integration is one line — `PlaytestLink.auto({ endpoint, game })` —
+> plus the `__game` hook contract below (bar 7), which the library auto-adapts into the
+> state timeline. Errors/stack traces are captured automatically for every game.
+
 ## When building a new game
 
 1. **Render to a single canvas.** The capture rig records one canvas element. Overlay UI
@@ -33,7 +38,9 @@ call, but every bar must hold.
 6. **Stamp a `version.json` into every build** (any changing string). The client polls it
    and offers players a reload toast when a fix ships mid-session.
 
-7. **Expose test hooks** on a `__game` global: at minimum `teleport/setPos`, an aim
+7. **Expose a `__game` global** with scalar getters for at least: `phase`, `hp`, and a
+   location (`zone`/`room` name and/or `x`,`y`/`pos`). The library's adapter turns this
+   standard shape into the state timeline automatically. Also expose test hooks: at minimum `teleport/setPos`, an aim
    setter, and a renderer-level screenshot function if your WebGL context doesn't
    support `canvas.toDataURL` readback (contexts without `preserveDrawingBuffer` return
    blanks — provide `__snap()` doing a fresh render + readback). Agents diagnose reports

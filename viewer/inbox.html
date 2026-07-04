@@ -108,6 +108,10 @@ async function showDetail(r) {
     html += `<div class="panel"><h3>MARKS (◈ moments the player flagged)</h3><table><tr><th>t</th><th>state</th><th>aim</th></tr>` +
       meta.marks.map((m) => `<tr><td class="t">${fmtT(m.t)}</td><td>${JSON.stringify(m.state || {}).slice(0, 140)}</td><td>${m.aim || ''}</td></tr>`).join('') + '</table></div>';
   }
+  if (meta.errors?.length) {
+    html += `<div class="panel"><h3>ERRORS / STACK TRACES (automatic)</h3><table><tr><th>t</th><th>type</th><th>message + stack</th></tr>` +
+      meta.errors.map((e) => `<tr><td class="t">${fmtT(e.t)}</td><td><b style="color:var(--red)">${e.type}</b></td><td>${e.msg || ''}${e.stack ? `<details><summary>stack</summary><pre>${e.stack}</pre></details>` : ''}</td></tr>`).join('') + '</table></div>';
+  }
   if (meta.events?.length) {
     html += `<div class="panel"><h3>EVENT LOG</h3><table><tr><th>t</th><th>event</th><th>data</th></tr>` +
       meta.events.map((e) => `<tr><td class="t">${fmtT(e.t)}</td><td><b>${e.name}</b></td><td>${JSON.stringify(e.data || {})}</td></tr>`).join('') + '</table></div>';
