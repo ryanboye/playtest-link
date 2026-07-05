@@ -33,7 +33,7 @@ window.PlaytestLink = (() => {
     rec.start(1000);
     return rec;
   }
-  function cycleRecorders() { // double-buffer: always ≥15s of playable webm available
+  function cycleRecorders() { // double-buffer: always clipSec..2×clipSec of playable webm (default ~6-12s)
     liveIsA = !liveIsA;
     const old = liveIsA ? recB : recA;
     if (liveIsA) recA = startRec(true); else recB = startRec(false);
@@ -181,7 +181,7 @@ window.PlaytestLink = (() => {
     ui.toast = document.createElement('div'); ui.toast.id = 'ptl-toast';
     ui.box = document.createElement('div'); ui.box.id = 'ptl-box';
     ui.input = document.createElement('input');
-    ui.input.placeholder = "what's wrong? BMO gets your last 15s + game state…";
+    ui.input.placeholder = "what's wrong? BMO gets your last few seconds + game state…";
     ui.send = document.createElement('button'); ui.send.textContent = 'SEND';
     ui.send.onclick = send;
     const cancel = document.createElement('button'); cancel.textContent = '✕';

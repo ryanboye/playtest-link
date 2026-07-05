@@ -62,3 +62,14 @@ deployed at ~4 min/bug).
 complaint → bundle read → diagnose → fix → deploy → hot-reload toast ≈ **4 minutes per
 bug** for state/render bugs. Spatial design changes are slower and want the
 proposal-first protocol (see AGENT-INSTRUCTIONS.md §10).
+
+## Known limitations (from code review, July 2026)
+
+- **Clip transport is base64-in-JSON**: `send()` base64-encodes the webm clips into one
+  JSON POST (relay caps at 40MB). It's the heaviest link and the first to strain under
+  bigger/longer clips. **Multipart upload** would be much leaner on both ends — the
+  known next upgrade (PRs welcome).
+- **Relay READ endpoints are unauthed** (`/invokes`, `/files`, `/feedbacklog`), same as
+  `/invoke`. The relay binds loopback, so your reverse proxy is the real gate — but
+  anyone who reaches it reads every playtester's video + complaint. Put auth in front of
+  the relay before exposing it beyond a trusted proxy.
