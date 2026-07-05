@@ -37,7 +37,11 @@ window.PlaytestLink = (() => {
     liveIsA = !liveIsA;
     const old = liveIsA ? recB : recA;
     if (liveIsA) recA = startRec(true); else recB = startRec(false);
-    setTimeout(() => { try { old && old.state !== 'inactive' && old.stop(); } catch {} }, 5500);
+    // stop delay derived from clipSec (Seb's fix): must stay < the cycle period so the
+    // old recorder never outlives the reuse of its buffer slot (which corrupted the
+    // stream at low clipSec) — while keeping near-full-cycle overlap.
+    const stopDelay = Math.max(600, Math.round((cfg.clipSec || 6) * 850));
+    setTimeout(() => { try { old && old.state !== 'inactive' && old.stop(); } catch {} }, stopDelay);
   }
 
   function pushError(entry) {
